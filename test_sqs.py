@@ -1,18 +1,15 @@
 import boto3
 import json
+import sys
 
-# Create SQS client
 sqs = boto3.client('sqs', region_name='us-east-2')
-
-# Queue URL (find this in SQS console - click on your queue)
 QUEUE_URL = 'https://sqs.us-east-2.amazonaws.com/398028532400/first-queue'
 
-# Send a message
-def send_task():
+def send_task(task_type, task_data):
     message = {
-        'task_id': '123',
-        'type': 'HELLO_WORLD',
-        'data': 'This is my first task!'
+        'task_id': f'{task_type}-{123}',
+        'type': task_type,
+        'data': task_data
     }
     
     response = sqs.send_message(
@@ -20,30 +17,11 @@ def send_task():
         MessageBody=json.dumps(message)
     )
     
-    print(f"Message sent! ID: {response['MessageId']}")
-
-def receive_task():
-    response = sqs.receive_message(
-        QueueUrl=QUEUE_URL,
-        MaxNumberOfMessages=1
-    )
-    
-    messages = response.get('Messages', [])
-    if messages:
-        message = messages[0]
-        body = json.loads(message['Body'])
-        print(f"Received task: {body}")
-        
-        # Delete message after processing
-        sqs.delete_message(
-            QueueUrl=QUEUE_URL,
-            ReceiptHandle=message['ReceiptHandle']
-        )
-        print("Message deleted from queue")
-    else:
-        print("No messages in queue")
+    print(f"Sent {task_type} task! ID: {response['MessageId']}")
 
 if __name__ == '__main__':
-    send_task()
-    #receive_task()
-
+    # Send different task types
+    send_task('IMAGE_RESIZE', 'profile_pic.jpg')
+    send_task('SEND_EMAIL', 'user@example.com')
+    send_task('PROCESS_DATA', {'records': 1000})
+    send_task('UNKNOWN_TYPE', 'This should fail gracefully')

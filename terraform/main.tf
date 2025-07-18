@@ -60,6 +60,26 @@ resource "aws_dynamodb_table" "task_status" {
   }
 }
 
+# S3 Bucket for input images
+resource "aws_s3_bucket" "input_images" {
+  bucket = "${var.environment}-task-queue-input-${data.aws_caller_identity.current.account_id}"
+  
+  tags = {
+    Environment = var.environment
+    Project     = "distributed-task-queue"
+  }
+}
+
+# S3 Bucket for processed images
+resource "aws_s3_bucket" "output_images" {
+  bucket = "${var.environment}-task-queue-output-${data.aws_caller_identity.current.account_id}"
+  
+  tags = {
+    Environment = var.environment
+    Project     = "distributed-task-queue"
+  }
+}
+
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
   name = "${var.environment}-task-processor-role"
@@ -114,6 +134,18 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "dynamodb:Scan"
         ]
         Resource = aws_dynamodb_table.task_status.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:PutObjectAcl"
+        ]
+        Resource = [
+          "${aws_s3_bucket.input_images.arn}/*",
+          "${aws_s3_bucket.output_images.arn}/*"
+        ]
       }
     ]
   })
@@ -123,16 +155,19 @@ resource "aws_iam_role_policy" "lambda_policy" {
 resource "aws_lambda_function" "task_processor" {
   filename         = "../lambda/task_processor.zip"
   function_name    = "${var.environment}-task-processor"
-  role            = aws_iam_role.lambda_role.arn
-  handler         = "task_processor.lambda_handler"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "task_processor.lambda_handler"
   source_code_hash = filebase64sha256("../lambda/task_processor.zip")
-  runtime         = "python3.11"
-  timeout         = 300
+  runtime          = "python3.11"
+  timeout          = 300
+  memory_size      = 512
 
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.task_status.name
       ENVIRONMENT    = var.environment
+      INPUT_BUCKET   = aws_s3_bucket.input_images.id
+      OUTPUT_BUCKET  = aws_s3_bucket.output_images.id
     }
   }
 
@@ -170,3 +205,13 @@ output "lambda_function_name" {
   description = "Name of the Lambda function"
   value       = aws_lambda_function.task_processor.function_name
 }
+
+output "input_bucket" {
+  value = aws_s3_bucket.input_images.id
+}
+
+output "output_bucket" {
+  value = aws_s3_bucket.output_images.id
+}
+
+data "aws_caller_identity" "current" {}
